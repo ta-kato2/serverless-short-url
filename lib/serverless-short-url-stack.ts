@@ -63,8 +63,8 @@ export class ServerlessShortUrlStack extends cdk.Stack {
     });
     role.addToPolicy(
       new PolicyStatement({
-        actions: ["dynamodb:GetItem", "dynamodb:PutItem"],
-        resources: [urlMappingTable.tableArn],
+        actions: ["dynamodb:Query", "dynamodb:PutItem"],
+        resources: [`${urlMappingTable.tableArn}*`],
       })
     );
 
@@ -94,7 +94,7 @@ export class ServerlessShortUrlStack extends cdk.Stack {
     role.addToPolicy(
       new PolicyStatement({
         actions: ["dynamodb:GetItem"],
-        resources: [urlMappingTable.tableArn],
+        resources: [`${urlMappingTable.tableArn}*`],
       })
     );
 
@@ -165,7 +165,7 @@ export class ServerlessShortUrlStack extends cdk.Stack {
 
     const lookupOriginalUrlIntegration = new CfnIntegration(
       this,
-      "GenerateUploadUrlLambdaIntegration",
+      "LookupOriginalUrlLambdaIntegration",
       {
         apiId: httpApi.ref,
         integrationType: "AWS_PROXY",
@@ -174,9 +174,9 @@ export class ServerlessShortUrlStack extends cdk.Stack {
         credentialsArn: role.roleArn,
       }
     );
-    new CfnRoute(this, `GenerateUploadUrlApiGatewayDefaultRoute`, {
+    new CfnRoute(this, `LookupOriginalUrlApiGatewayDefaultRoute`, {
       apiId: httpApi.ref,
-      routeKey: "POST /lookup",
+      routeKey: "GET /lookup",
       target: `integrations/${lookupOriginalUrlIntegration.ref}`,
     });
   }

@@ -1,8 +1,5 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResultV2 } from "aws-lambda";
-import {
-  DynamoDBClient,
-  GetItemCommand,
-} from "@aws-sdk/client-dynamodb";
+import { DynamoDBClient, GetItemCommand } from "@aws-sdk/client-dynamodb";
 
 type RequestBody = {
   hash: string;
@@ -11,24 +8,30 @@ type RequestBody = {
 exports.handler = async (
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResultV2> => {
-  const body = JSON.parse(event.body!) as RequestBody;
-  const urlMappingRecord = await selectDB(body.hash);
+  const hash = (event.queryStringParameters as RequestBody).hash;
+  const urlMappingRecord = await selectDB(hash);
+  if (!urlMappingRecord.Item) {
+    return {
+      statusCode: 404,
+      headers: {
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Allow-Origin": "*", //TODO
+      },
+    };
+  }
   return {
-    statusCode: 200,
+    statusCode: 301,
     headers: {
-      "Content-Type": "application/json",
+      location: urlMappingRecord.Item?.ORIGINAL_URL.S!,
       "Access-Control-Allow-Headers": "*",
-      "Access-Control-Allow-Origin": "*", //'https://form.timedesigner.com',
+      "Access-Control-Allow-Origin": "*", //TODO
     },
-    body: JSON.stringify({
-      hash: urlMappingRecord.Item?.SHORT_URL_HASH.S ?? null,
-    }),
   };
 };
 
 const selectDB = async (shortUrlHash: string) => {
   const dynamoDBClient = new DynamoDBClient({});
-  return dynamoDBClient.send(
+  return await dynamoDBClient.send(
     new GetItemCommand({
       TableName: "URL_MAPPING",
       Key: {

@@ -1,7 +1,7 @@
 import { APIGatewayProxyEvent, APIGatewayProxyResultV2 } from "aws-lambda";
 import {
   DynamoDBClient,
-  GetItemCommand,
+  QueryCommand,
   PutItemCommand,
 } from "@aws-sdk/client-dynamodb";
 
@@ -13,33 +13,41 @@ exports.handler = async (
   event: APIGatewayProxyEvent
 ): Promise<APIGatewayProxyResultV2> => {
   const body = JSON.parse(event.body!) as RequestBody;
-  const urlMappingRecord = await selectOrInsertDB(body.url);
+  const record = await selectDB(body.url);
+  if (record.Items!.length > 0) {
+    return {
+      statusCode: 200,
+      headers: {
+        "Content-Type": "application/json",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Allow-Origin": "*", //TODO
+      },
+      body: JSON.stringify({ hash: record.Items![0].SHORT_URL_HASH.S }),
+    };
+  }
+
+  const hash = generateHash();
+  await insertDB(body.url, hash);
   return {
     statusCode: 200,
     headers: {
       "Content-Type": "application/json",
       "Access-Control-Allow-Headers": "*",
-      "Access-Control-Allow-Origin": "*", //'https://form.timedesigner.com',
+      "Access-Control-Allow-Origin": "*", //TODO
     },
-    body: JSON.stringify({ hash: urlMappingRecord.SHORT_URL_HASH.S }),
+    body: JSON.stringify({ hash: hash }),
   };
 };
 
-const selectOrInsertDB = async (originalUrl: string): Promise<any> => {
-  const record = await selectDB(originalUrl);
-  if (record.Item) {
-    return record.Item;
-  }
-  return await insertDB(originalUrl, generateHash());
-};
-
-const selectDB = async (shortUrlHash: string) => {
+const selectDB = async (originalUrl: string) => {
   const dynamoDBClient = new DynamoDBClient({});
-  return dynamoDBClient.send(
-    new GetItemCommand({
+  return await dynamoDBClient.send(
+    new QueryCommand({
       TableName: "URL_MAPPING",
-      Key: {
-        SHORT_URL_HASH: { S: shortUrlHash },
+      IndexName: "ORIGINAL_URL_INDEX",
+      KeyConditionExpression: "ORIGINAL_URL = :originalUrl",
+      ExpressionAttributeValues: {
+        ":originalUrl": { S: originalUrl },
       },
     })
   );
@@ -47,7 +55,7 @@ const selectDB = async (shortUrlHash: string) => {
 
 const insertDB = async (originalUrl: string, shortUrlHash: string) => {
   const dynamoDBClient = new DynamoDBClient({});
-  return dynamoDBClient.send(
+  await dynamoDBClient.send(
     new PutItemCommand({
       TableName: "URL_MAPPING",
       Item: {
